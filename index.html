@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PRAHAR Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body{
+  margin:0;
+  font-family:Arial, sans-serif;
+  background:#020617;
+  color:#e6f7ff;
+  transition:.3s;
+}
+
+.light{
+  background:#f1f5f9;
+  color:#020617;
+}
+.light .card{
+  background:#ffffff;
+  border-color:#0ea5e9;
+}
+
+#loginBox{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+}
+.login-card{
+  background:#020617cc;
+  border:1px solid #00ffa6;
+  padding:30px;
+  border-radius:12px;
+  text-align:center;
+}
+.login-card h1{
+  color:#00ffa6;
+}
+
+input{
+  width:220px;
+  padding:10px;
+  margin:8px 0;
+  border-radius:6px;
+  border:1px solid #334155;
+  background:#020617;
+  color:white;
+}
+button{
+  padding:10px 14px;
+  margin:6px;
+  background:#00ffa6;
+  border:none;
+  border-radius:6px;
+  cursor:pointer;
+}
+
+#dashboard{display:none}
+.container{padding:20px}
+.card{
+  background:#020617cc;
+  border:1px solid #00ffa6;
+  border-radius:10px;
+  padding:16px;
+  margin-bottom:16px;
+}
+
+table{width:100%;border-collapse:collapse}
+th,td{
+  padding:8px;
+  border-bottom:1px solid #334155;
+}
+th{color:#00ffa6}
+
+.status-normal{background:#064e3b;padding:8px;border-radius:6px}
+.status-attack{background:#7f1d1d;padding:8px;border-radius:6px}
+</style>
+</head>
+
+<body>
+
+<!-- LOGIN -->
+<div id="loginBox">
+  <div class="login-card">
+    <h1>PRAHAR</h1>
+    <p>Proactive Response & Attack Handling and Analysis Radar</p>
+    <form id="loginForm">
+      <input name="email" placeholder="Email"><br>
+      <input name="password" type="password" placeholder="Password"><br>
+      <button>Login</button>
+    </form>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="container">
+
+<button onclick="toggleTheme()">Toggle Theme</button>
+<button onclick="downloadReport()">Download Report</button>
+<button onclick="logout()">Logout</button>
+
+<div class="card">
+<h3>Available Networks</h3>
+<table>
+<thead>
+<tr><th>SSID</th><th>BSSID</th><th>RSSI</th></tr>
+</thead>
+<tbody id="networkTable"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>Attack Status</h3>
+<div id="attackStatus" class="status-normal">Normal</div>
+</div>
+
+<div class="card">
+<h3>Attack Details</h3>
+<table>
+<thead>
+<tr>
+<th>Time</th>
+<th>Type</th>
+<th>Victim SSID</th>
+<th>Victim IP</th>
+<th>Victim BSSID</th>
+<th>Attacker IP</th>
+<th>Attacker BSSID</th>
+<th>Frames</th>
+</tr>
+</thead>
+<tbody id="attackTable"></tbody>
+</table>
+</div>
+
+<div class="card">
+<h3>Frames vs Time</h3>
+<canvas id="chart"></canvas>
+</div>
+
+</div>
+
+<script>
+let chart=null;
+
+document.getElementById("loginForm").onsubmit=async e=>{
+ e.preventDefault();
+ const res=await fetch("/login",{method:"POST",body:new FormData(e.target)});
+ const data=await res.json();
+ if(data.status==="success"){
+   loginBox.style.display="none";
+   dashboard.style.display="block";
+ }else alert("Wrong credentials");
+};
+
+function logout(){
+ fetch("/logout");
+ location.reload();
+}
+
+function toggleTheme(){
+ document.body.classList.toggle("light");
+}
+
+async function loadNetworks(){
+ const res=await fetch("/api/networks");
+ const nets=await res.json();
+ const table=document.getElementById("networkTable");
+ table.innerHTML="";
+ nets.forEach(n=>{
+  table.innerHTML+=`<tr>
+   <td>${n.ssid || "-"}</td>
+   <td>${n.bssid || "-"}</td>
+   <td>${n.rssi ?? "-"}</td>
+  </tr>`;
+ });
+}
+
+async function loadAttack(){
+ const s=await fetch("/api/status").then(r=>r.json());
+ const box=document.getElementById("attackStatus");
+
+ if(s.status==="Normal"){
+  box.className="status-normal";
+  box.innerText="Normal";
+  document.getElementById("attackTable").innerHTML="";
+  if(chart){chart.destroy();chart=null;}
+  return;
+ }
+
+ box.className="status-attack";
+ box.innerText=s.status;
+
+ const logs=await fetch("/api/logs").then(r=>r.json());
+ const table=document.getElementById("attackTable");
+ table.innerHTML="";
+ logs.forEach(l=>{
+  table.innerHTML+=`<tr>
+   <td>${l.time}</td>
+   <td>${l.type}</td>
+   <td>${l.victim_ssid}</td>
+   <td>${l.victim_ip}</td>
+   <td>${l.victim_bssid}</td>
+   <td>${l.attacker_ip}</td>
+   <td>${l.attacker_bssid}</td>
+   <td>${l.frames}</td>
+  </tr>`;
+ });
+
+ const g=await fetch("/api/graph").then(r=>r.json());
+ if(g.time.length===0) return;
+
+ if(chart) chart.destroy();
+ chart=new Chart(document.getElementById("chart"),{
+  type:"line",
+  data:{
+   labels:g.time,
+   datasets:[{
+    label:"Frames",
+    data:g.frames,
+    borderColor:"#00ffa6",
+    tension:0.3
+   }]
+  }
+ });
+}
+
+setInterval(()=>{loadNetworks();loadAttack();},2000);
+
+function downloadReport(){
+ window.location="/download";
+}
+</script>
+
+</body>
+</html>
